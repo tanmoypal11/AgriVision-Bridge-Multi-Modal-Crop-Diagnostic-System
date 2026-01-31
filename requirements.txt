@@ -1,0 +1,34 @@
+# ===============================
+# Core App
+# ===============================
+streamlit
+numpy
+pandas
+matplotlib
+opencv-python
+
+# ===============================
+# Computer Vision (YOLO)
+# ===============================
+ultralytics
+
+# ===============================
+# Deep Learning
+# ===============================
+torch
+torchvision
+
+# ===============================
+# Local LLM
+# ===============================
+transformers
+accelerate
+sentencepiece
+
+# ===============================
+# Utilities
+# ===============================
+Pillow
+tqdm
+scikit-learn
+seaborn
