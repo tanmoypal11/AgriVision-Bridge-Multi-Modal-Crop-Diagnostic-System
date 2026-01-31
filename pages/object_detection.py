@@ -48,94 +48,81 @@ source_img = st.sidebar.file_uploader(
     type=("jpg", "jpeg", "png", "bmp", "webp")
 )
 
-col1, col2 = st.columns(2)
-
 # --------------------------------------------------
-# LEFT COLUMN – SOURCE IMAGE
+# INPUT IMAGE
 # --------------------------------------------------
-with col1:
-    st.subheader("📷 Input Image")
+st.subheader("📷 Input Image")
 
-    if source_img is None:
-        if os.path.exists(settings.DEFAULT_IMAGE):
-            default_image = PIL.Image.open(settings.DEFAULT_IMAGE)
-            st.image(default_image, caption="Default Image", use_container_width=True)
-        else:
-            st.warning("Default image not found.")
+if source_img is None:
+    if os.path.exists(settings.DEFAULT_IMAGE):
+        st.image(
+            PIL.Image.open(settings.DEFAULT_IMAGE),
+            use_container_width=True
+        )
     else:
-        uploaded_image = PIL.Image.open(source_img)
-        st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
+        st.warning("Default image not found.")
+else:
+    uploaded_image = PIL.Image.open(source_img)
+    st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
 
 # --------------------------------------------------
-# RIGHT COLUMN – DETECTION + LLM OUTPUT
+# RUN DETECTION + DIAGNOSIS
 # --------------------------------------------------
-with col2:
+if source_img and st.sidebar.button("Detect & Diagnose"):
+    with st.spinner("Running YOLO detection..."):
+        results = yolo_model.predict(uploaded_image, conf=confidence)
+        plotted_img = results[0].plot()[:, :, ::-1]
+
     st.subheader("🔍 Detection Result")
+    st.image(plotted_img, caption="Detected Diseases", use_container_width=True)
 
-    if source_img is None:
-        if os.path.exists(settings.DEFAULT_DETECT_IMAGE):
-            default_detected = PIL.Image.open(settings.DEFAULT_DETECT_IMAGE)
-            st.image(default_detected, caption="Sample Output", use_container_width=True)
-        else:
-            st.info("Upload an image to view detection results.")
+    # --------------------------------------------------
+    # EXTRACT DETECTIONS
+    # --------------------------------------------------
+    detections = []
+
+    if results[0].boxes:
+        for box in results[0].boxes:
+            cls_id = int(box.cls)
+            cls_name = yolo_model.names[cls_id]
+            conf_score = float(box.conf)
+
+            detections.append(
+                f"{cls_name} detected with {conf_score * 100:.2f}% confidence"
+            )
+
+    st.subheader("📦 Detection Metadata")
+    if detections:
+        for d in detections:
+            st.write("•", d)
     else:
-        if st.sidebar.button("Detect & Diagnose"):
-            with st.spinner("Running YOLO detection..."):
-                results = yolo_model.predict(uploaded_image, conf=confidence)
-                plotted_img = results[0].plot()[:, :, ::-1]
-                st.image(plotted_img, caption="Detected Diseases", use_container_width=True)
+        st.write("No diseases detected.")
 
-            # --------------------------------------------------
-            # EXTRACT DETECTIONS
-            # --------------------------------------------------
-            detections = []
-
-            if results[0].boxes:
-                for box in results[0].boxes:
-                    cls_id = int(box.cls)
-                    cls_name = yolo_model.names[cls_id]
-                    conf_score = float(box.conf)
-
-                    detections.append(
-                        f"- {cls_name} detected with {conf_score * 100:.2f}% confidence"
-                    )
-
-            with st.expander("📦 Detection Metadata"):
-                if detections:
-                    for d in detections:
-                        st.write(d)
-                else:
-                    st.write("No diseases detected.")
-
-            # --------------------------------------------------
-            # LLM DIAGNOSTIC REPORT
-            # --------------------------------------------------
-            if detections:
-                prompt = f"""
+    # --------------------------------------------------
+    # LLM DIAGNOSTIC REPORT
+    # --------------------------------------------------
+    if detections:
+        prompt = f"""
 You are an agriculture expert.
 
 A YOLO-based computer vision model analyzed a crop image and detected
 the following disease conditions:
 
-{' '.join(detections)}
+{chr(10).join(detections)}
 
 Tasks:
-1. Explain the disease(s) in simple, farmer-friendly language.
-2. Mention possible causes.
-3. Suggest immediate preventive or corrective actions.
-4. If confidence is below 60%, politely mention uncertainty.
+- Explain the disease(s) in simple, farmer-friendly language
+- Mention possible causes
+- Suggest immediate preventive or corrective actions
+- If confidence is below 60%, politely mention uncertainty
 
 Keep the response concise and practical.
 """
 
-                with st.spinner("Generating AI diagnostic report..."):
-                    llm_output = llm(
-                        prompt,
-                        max_new_tokens=200,
-                        temperature=0.4
-                    )
+        with st.spinner("Generating AI diagnostic report..."):
+            llm_output = llm(prompt, max_new_tokens=200)
 
-                st.subheader("🧠 AI Diagnostic Report")
-                st.write(llm_output[0]["generated_text"])
-            else:
-                st.info("No disease detected — LLM diagnosis not generated.")
+        st.subheader("🧠 AI Diagnostic Report")
+        st.write(llm_output[0]["generated_text"])
+    else:
+        st.info("No disease detected — AI diagnosis not generated.")
