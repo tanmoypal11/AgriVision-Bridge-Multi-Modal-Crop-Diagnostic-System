@@ -1,6 +1,18 @@
 from pathlib import Path
 import sys
 
+from pathlib import Path
+
+# Project root
+ROOT_DIR = Path(__file__).resolve().parent
+
+# YOLO model path (CHANGE filename if different)
+DETECTION_MODEL = ROOT_DIR / "models" / "best.pt"
+
+# Default images (optional but recommended)
+DEFAULT_IMAGE = ROOT_DIR / "assets" / "default.jpg"
+DEFAULT_DETECT_IMAGE = ROOT_DIR / "assets" / "default_detect.jpg"
+
 # -------------------------------
 # PATH SETUP
 # -------------------------------
@@ -26,3 +38,4 @@ DEFAULT_DETECT_IMAGE = IMAGES_DIR / "office_4_detected.jpg"
 # MODEL PATHS
 # -------------------------------
 DETECTION_MODEL = WEIGHTS_DIR / "yolo.pt"
+
