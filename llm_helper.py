@@ -1,96 +1,33 @@
-from collections import Counter
+import streamlit as st
+from transformers import pipeline
 
-# ----------------------------------------
-# Crop-specific advisory knowledge base
-# ----------------------------------------
-CROP_ADVICE = {
-    "leaf_blight": {
-        "problem": "Leaf blight detected",
-        "cause": "Fungal infection caused by high humidity",
-        "solution": [
-            "Remove infected leaves immediately",
-            "Apply recommended fungicide",
-            "Avoid overhead irrigation"
-        ]
-    },
-    "rust": {
-        "problem": "Rust disease detected",
-        "cause": "Airborne fungal spores",
-        "solution": [
-            "Use resistant crop varieties",
-            "Apply sulfur-based fungicide",
-            "Ensure good air circulation"
-        ]
-    },
-    "healthy": {
-        "problem": "Crop appears healthy",
-        "cause": "No visible disease symptoms",
-        "solution": [
-            "Continue regular monitoring",
-            "Maintain proper irrigation",
-            "Follow nutrient schedule"
-        ]
-    }
-}
-
-# ----------------------------------------
-# Generate human-friendly explanation
-# ----------------------------------------
-def generate_explanation(predictions):
+@st.cache_resource(show_spinner=False)
+def load_llm():
     """
-    Convert YOLO predictions into farmer-friendly advice
+    Load lightweight text-generation model for explanations.
+    Cached to avoid reload on every interaction.
     """
-    if not predictions:
-        return "No crop issues detected. The plant appears healthy."
-
-    detected_classes = [p["class"] for p in predictions]
-    class_counts = Counter(detected_classes)
-
-    explanations = []
-
-    for crop_class, count in class_counts.items():
-        key = crop_class.lower().replace(" ", "_")
-
-        if key in CROP_ADVICE:
-            info = CROP_ADVICE[key]
-            explanations.append(
-                f"🔍 **{info['problem']}**\n"
-                f"- Occurrences: {count}\n"
-                f"- Likely Cause: {info['cause']}\n"
-                f"- Recommended Action:\n"
-                + "\n".join([f"  • {s}" for s in info["solution"]])
-            )
-        else:
-            explanations.append(
-                f"🔍 **{crop_class} detected**\n"
-                f"- Occurrences: {count}\n"
-                f"- Recommendation: Consult local agriculture expert."
-            )
-
-    return "\n\n".join(explanations)
+    generator = pipeline(
+        task="text-generation",
+        model="google/flan-t5-small",
+        max_new_tokens=128
+    )
+    return generator
 
 
-# ----------------------------------------
-# LLM-ready prompt generator (optional)
-# ----------------------------------------
-def build_llm_prompt(predictions):
+def generate_insight(llm, detected_objects):
     """
-    Build prompt for GPT / Gemini / LLaMA
+    Generate agricultural insight based on detected objects
     """
-    summary = Counter([p["class"] for p in predictions])
+    if not detected_objects:
+        return "No crops or plant diseases detected in the image."
 
-    prompt = f"""
-You are an agricultural expert.
+    prompt = (
+        "You are an agriculture expert. "
+        "Based on the following detected objects, "
+        "provide crop health insight and suggestions:\n\n"
+        f"{', '.join(detected_objects)}"
+    )
 
-The crop image analysis detected:
-{dict(summary)}
-
-Explain:
-1. What diseases are present
-2. How severe the condition is
-3. Preventive and corrective actions
-4. Farmer-friendly advice in simple language
-
-Keep response concise and actionable.
-"""
-    return prompt.strip()
+    response = llm(prompt)[0]["generated_text"]
+    return response
