@@ -7,3 +7,7 @@ torchvision
 transformers
 sentencepiece
 opencv-python-headless
+streamlit
+groq
+ultralytics
+pillow
