@@ -95,15 +95,18 @@ if source_img and st.button("🔍 Detect & Diagnose"):
         st.subheader("🧠 AI Diagnostic Explanation")
 
         prompt = f"""
-You are an agriculture expert.
+Task: Crop disease diagnosis
 
-A computer vision model detected the following disease(s):
+Detected disease:
 {'; '.join(detections)}
 
-Explain the disease in simple farmer-friendly language.
-Mention causes and immediate actions.
-If confidence is below 60%, mention uncertainty.
-Keep it short and practical.
+Instructions:
+- Explain the disease in simple farmer-friendly language
+- Mention possible causes
+- Suggest immediate preventive or corrective actions
+- If confidence is below 60%, say the diagnosis may be uncertain
+
+Answer clearly in 5–6 short bullet points.
 """
 
         with st.spinner("Generating AI explanation..."):
@@ -112,3 +115,8 @@ Keep it short and practical.
         st.write(llm_output[0]["generated_text"])
     else:
         st.info("No disease detected, so AI explanation was not generated.")
+
+
+
+
+
