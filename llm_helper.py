@@ -5,5 +5,6 @@ from transformers import pipeline
 def load_llm():
     return pipeline(
         task="text-generation",
-        model="google/flan-t5-small"
+        model="google/flan-t5-small",
+        return_full_text=False   # ⭐ THIS IS THE KEY
     )
