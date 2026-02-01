@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-import PIL
+import PIL.Image
 import streamlit as st
 
 # Local modules
@@ -14,23 +14,26 @@ from llm_helper import load_llm
 st.set_page_config(
     page_title="Crop Disease Detection | AgriVision",
     page_icon="🌿",
-    layout="centered"   # ✅ single column
+    layout="centered"
 )
 
 st.title("🎯 Crop Disease Detection & Diagnosis")
-st.write("Upload a crop image to detect disease and get an AI explanation.")
+st.write("Upload a crop image to detect disease and receive a farmer-friendly AI explanation.")
 
 # --------------------------------------------------
-# SIDEBAR CONFIG
+# SIDEBAR
 # --------------------------------------------------
-st.sidebar.header("⚙️ Model Settings")
-confidence = float(
-    st.sidebar.slider("Detection Confidence (%)", 25, 100, 45)
-) / 100
+st.sidebar.header("⚙️ Detection Settings")
+confidence = st.sidebar.slider(
+    "Detection Confidence (%)",
+    min_value=25,
+    max_value=100,
+    value=45
+) / 100.0
 
 st.sidebar.header("📤 Upload Image")
 source_img = st.sidebar.file_uploader(
-    "Choose an image",
+    "Choose a crop image",
     type=("jpg", "jpeg", "png", "bmp", "webp")
 )
 
@@ -38,10 +41,10 @@ source_img = st.sidebar.file_uploader(
 # LOAD MODELS
 # --------------------------------------------------
 @st.cache_resource
-def load_yolo():
+def load_yolo_model():
     return helper.load_model(Path(settings.DETECTION_MODEL))
 
-yolo_model = load_yolo()
+yolo_model = load_yolo_model()
 llm = load_llm()
 
 # --------------------------------------------------
@@ -49,90 +52,108 @@ llm = load_llm()
 # --------------------------------------------------
 if source_img is None:
     if os.path.exists(settings.DEFAULT_IMAGE):
-        img = PIL.Image.open(settings.DEFAULT_IMAGE)
-        st.image(img, caption="Default Image", use_container_width=True)
+        default_img = PIL.Image.open(settings.DEFAULT_IMAGE)
+        st.image(default_img, caption="Default Image", use_container_width=True)
     else:
-        st.info("Upload an image to begin.")
+        st.info("⬅️ Upload a crop image from the sidebar to begin.")
 else:
     uploaded_image = PIL.Image.open(source_img)
     st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
 
 # --------------------------------------------------
-# DETECTION
+# DETECTION + DIAGNOSIS
 # --------------------------------------------------
 if source_img and st.button("🔍 Detect & Diagnose"):
-    with st.spinner("Running detection..."):
-        results = yolo_model.predict(uploaded_image, conf=confidence)
-        plotted = results[0].plot()[:, :, ::-1]
-        st.image(plotted, caption="Detection Result", use_container_width=True)
+    st.divider()
 
-    # --------------------------------------------------
+    # ---------------------------
+    # RUN YOLO
+    # ---------------------------
+    with st.spinner("Running disease detection..."):
+        results = yolo_model.predict(uploaded_image, conf=confidence)
+
+    # ---------------------------
+    # SHOW IMAGE RESULT
+    # ---------------------------
+    plotted_img = results[0].plot()[:, :, ::-1]
+    st.image(plotted_img, caption="Detection Result", use_container_width=True)
+
+    # ---------------------------
     # EXTRACT DETECTIONS
-    # --------------------------------------------------
+    # ---------------------------
     detections = []
+    structured_detections = []
 
     if results[0].boxes:
         for box in results[0].boxes:
             cls_id = int(box.cls)
             cls_name = yolo_model.names[cls_id]
-            conf_score = float(box.conf)
+            conf_score = float(box.conf) * 100
 
-            detections.append(
-                f"{cls_name} detected with {conf_score*100:.2f}% confidence"
-            )
+            text = f"{cls_name} detected with {conf_score:.2f}% confidence"
+            detections.append(text)
 
-    with st.expander("📦 Detection Metadata"):
-        if detections:
-            for d in detections:
-                st.write(d)
-        else:
-            st.write("No objects detected.")
+            structured_detections.append({
+                "disease": cls_name,
+                "confidence": conf_score
+            })
 
-    # --------------------------------------------------
-    # 🧠 LLM OUTPUT (CLEAN & CONTROLLED)
-    # --------------------------------------------------
+    # ---------------------------
+    # ALWAYS SHOW DETECTION TEXT
+    # ---------------------------
+    st.subheader("📦 Detection Result")
+
     if detections:
-        st.subheader("🧠 AI Diagnostic Explanation")
+        for d in detections:
+            st.write("•", d)
+    else:
+        st.warning("No disease detected in the image.")
+        st.stop()
 
-        prompt = f"""
-You are an experienced agricultural extension officer.
+    # --------------------------------------------------
+    # 🧠 AI DIAGNOSTIC EXPLANATION
+    # --------------------------------------------------
+    st.divider()
+    st.subheader("🧠 AI Diagnostic Explanation")
 
-Context:
-A computer vision model analyzed a crop image and detected the following disease(s):
+    detection_lines = "\n".join(
+        [f"- {d['disease']} ({d['confidence']:.2f}%)" for d in structured_detections]
+    )
 
-{'; '.join(detections)}
+    prompt = f"""
+You are an agricultural extension expert.
 
-Rules (STRICT):
+A crop image was analyzed by a computer vision system.
+The following disease(s) were detected:
+
+{detection_lines}
+
+STRICT RULES:
 - Talk ONLY about crop disease and farming
-- Do NOT mention animals, people, medicine, or unrelated topics
-- Use very simple language suitable for farmers
+- Use simple farmer-friendly language
+- No animals, people, medicine, or unrelated topics
 - No stories, no examples outside agriculture
-- No assumptions beyond the detected disease
+- No speculation beyond detected disease
 
-What to explain:
-1. What the disease is (1 line)
-2. Why it happens (causes)
-3. Immediate actions the farmer should take
-4. Basic prevention tips
+Explain clearly:
+• What the disease is
+• Why it happens
+• What the farmer should do immediately
+• How to prevent it in future
 
-If detection confidence is below 60%, clearly say the result may not be fully certain.
+If confidence is below 60%, clearly say the diagnosis may be uncertain.
 
 Format:
 - 5 to 6 short bullet points
-- Practical and action-oriented
+- Practical, direct, and actionable
 """
 
-        with st.spinner("Generating AI explanation..."):
-            llm_output = llm(
-                prompt,
-                max_new_tokens=180,
-                temperature=0.2,     # 🔒 reduces nonsense
-                top_p=0.9
-            )
+    with st.spinner("Generating AI explanation..."):
+        llm_output = llm(
+            prompt,
+            max_new_tokens=180,
+            temperature=0.2,
+            top_p=0.9
+        )
 
-        st.write(llm_output[0]["generated_text"])
-
-
-
-
-
+    st.write(llm_output[0]["generated_text"])
