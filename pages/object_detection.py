@@ -1,159 +1,89 @@
-import os
-from pathlib import Path
-import PIL.Image
 import streamlit as st
-
-# Local modules
+from groq import Groq
+from PIL import Image
+from pathlib import Path
+import helper  # Assuming your helper.py handles YOLO loading
 import settings
-import helper
-from llm_helper import load_llm
 
-# --------------------------------------------------
-# PAGE CONFIG
-# --------------------------------------------------
-st.set_page_config(
-    page_title="Crop Disease Detection | AgriVision",
-    page_icon="🌿",
-    layout="centered"
-)
+# --- INITIALIZATION ---
+st.set_page_config(page_title="AgriVision AI", page_icon="🌿", layout="wide")
+client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-st.title("🎯 Crop Disease Detection & Diagnosis")
-st.write("Upload a crop image to detect disease and receive a farmer-friendly AI explanation.")
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-# --------------------------------------------------
-# SIDEBAR
-# --------------------------------------------------
-st.sidebar.header("⚙️ Detection Settings")
-confidence = st.sidebar.slider(
-    "Detection Confidence (%)",
-    min_value=25,
-    max_value=100,
-    value=45
-) / 100.0
+# --- SIDEBAR: Upload & Confidence ---
+st.sidebar.header("⚙️ Settings")
+confidence = st.sidebar.slider("Confidence (%)", 25, 100, 45) / 100.0
+source_img = st.sidebar.file_uploader("Upload Leaf", type=("jpg", "jpeg", "png"))
 
-st.sidebar.header("📤 Upload Image")
-source_img = st.sidebar.file_uploader(
-    "Choose a crop image",
-    type=("jpg", "jpeg", "png", "bmp", "webp")
-)
-
-# --------------------------------------------------
-# LOAD MODELS
-# --------------------------------------------------
+# Load Model
 @st.cache_resource
-def load_yolo_model():
+def load_yolo():
     return helper.load_model(Path(settings.DETECTION_MODEL))
 
-yolo_model = load_yolo_model()
-llm = load_llm()
+yolo_model = load_yolo()
 
-# --------------------------------------------------
-# IMAGE DISPLAY
-# --------------------------------------------------
-if source_img is None:
-    if os.path.exists(settings.DEFAULT_IMAGE):
-        default_img = PIL.Image.open(settings.DEFAULT_IMAGE)
-        st.image(default_img, caption="Default Image", use_container_width=True)
-    else:
-        st.info("⬅️ Upload a crop image from the sidebar to begin.")
-else:
-    uploaded_image = PIL.Image.open(source_img)
-    st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
+# --- MAIN INTERFACE ---
+col1, col2 = st.columns([1, 1])
 
-# --------------------------------------------------
-# DETECTION + DIAGNOSIS
-# --------------------------------------------------
-if source_img and st.button("🔍 Detect & Diagnose"):
-    st.divider()
+with col1:
+    st.subheader("🔍 Image Analysis")
+    if source_img:
+        uploaded_image = Image.open(source_img)
+        st.image(uploaded_image, caption="Uploaded", use_container_width=True)
+        
+        if st.button("Detect Disease"):
+            results = yolo_model.predict(uploaded_image, conf=confidence)
+            plotted_img = results[0].plot()[:, :, ::-1]
+            st.image(plotted_img, caption="Result")
 
-    # ---------------------------
-    # RUN YOLO
-    # ---------------------------
-    with st.spinner("Running disease detection..."):
-        results = yolo_model.predict(uploaded_image, conf=confidence)
+            # Extract results for the LLM
+            detections = []
+            for box in results[0].boxes:
+                cls_name = yolo_model.names[int(box.cls)]
+                conf = float(box.conf) * 100
+                detections.append(f"{cls_name} ({conf:.2f}%)")
 
-    # ---------------------------
-    # SHOW IMAGE RESULT
-    # ---------------------------
-    plotted_img = results[0].plot()[:, :, ::-1]
-    st.image(plotted_img, caption="Detection Result", use_container_width=True)
+            if detections:
+                detection_text = ", ".join(detections)
+                # Create the custom prompt for the AI
+                ai_prompt = f"The system detected: {detection_text}. \nTasks:\n1. Explain the disease in farmer-friendly language.\n2. Mention causes.\n3. Suggest immediate actions.\n4. If confidence is below 60%, mention uncertainty."
+                
+                # Push this to session state so the chat picks it up
+                st.session_state.messages.append({"role": "user", "content": ai_prompt})
+            else:
+                st.warning("No disease detected.")
 
-    # ---------------------------
-    # EXTRACT DETECTIONS
-    # ---------------------------
-    detections = []
-    structured_detections = []
+with col2:
+    st.subheader("💬 AI Plant Doctor")
+    
+    # Display chat history
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
-    if results[0].boxes:
-        for box in results[0].boxes:
-            cls_id = int(box.cls)
-            cls_name = yolo_model.names[cls_id]
-            conf_score = float(box.conf) * 100
+    # Chat Input (if user wants to ask follow-up questions)
+    if chat_input := st.chat_input("Ask more about the treatment..."):
+        st.session_state.messages.append({"role": "user", "content": chat_input})
+        with st.chat_message("user"):
+            st.markdown(chat_input)
 
-            text = f"{cls_name} detected with {conf_score:.2f}% confidence"
-            detections.append(text)
-
-            structured_detections.append({
-                "disease": cls_name,
-                "confidence": conf_score
-            })
-
-    # ---------------------------
-    # ALWAYS SHOW DETECTION TEXT
-    # ---------------------------
-    st.subheader("📦 Detection Result")
-
-    if detections:
-        for d in detections:
-            st.write("•", d)
-    else:
-        st.warning("No disease detected in the image.")
-        st.stop()
-
-    # --------------------------------------------------
-    # 🧠 AI DIAGNOSTIC EXPLANATION
-    # --------------------------------------------------
-    st.divider()
-    st.subheader("🧠 AI Diagnostic Explanation")
-
-    detection_lines = "\n".join(
-        [f"- {d['disease']} ({d['confidence']:.2f}%)" for d in structured_detections]
-    )
-
-    prompt = f"""
-You are an agricultural extension expert.
-
-A crop image was analyzed by a computer vision system.
-The following disease(s) were detected:
-
-{detection_lines}
-
-STRICT RULES:
-- Talk ONLY about crop disease and farming
-- Use simple farmer-friendly language
-- No animals, people, medicine, or unrelated topics
-- No stories, no examples outside agriculture
-- No speculation beyond detected disease
-
-Explain clearly:
-• What the disease is
-• Why it happens
-• What the farmer should do immediately
-• How to prevent it in future
-
-If confidence is below 60%, clearly say the diagnosis may be uncertain.
-
-Format:
-- 5 to 6 short bullet points
-- Practical, direct, and actionable
-"""
-
-    with st.spinner("Generating AI explanation..."):
-        llm_output = llm(
-            prompt,
-            max_new_tokens=180,
-            temperature=0.2,
-            top_p=0.9
-        )
-
-    st.write(llm_output[0]["generated_text"])
+    # Generate response if the last message is from 'user'
+    if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+        with st.chat_message("assistant"):
+            response_placeholder = st.empty()
+            full_response = ""
+            
+            completion = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=st.session_state.messages,
+                stream=True
+            )
+            for chunk in completion:
+                content = chunk.choices[0].delta.content
+                if content:
+                    full_response += content
+                    response_placeholder.markdown(full_response)
+            
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
