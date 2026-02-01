@@ -89,32 +89,48 @@ if source_img and st.button("🔍 Detect & Diagnose"):
             st.write("No objects detected.")
 
     # --------------------------------------------------
-    # 🧠 LLM OUTPUT (THIS WILL SHOW)
+    # 🧠 LLM OUTPUT (CLEAN & CONTROLLED)
     # --------------------------------------------------
     if detections:
         st.subheader("🧠 AI Diagnostic Explanation")
 
         prompt = f"""
-Task: Crop disease diagnosis
+You are an experienced agricultural extension officer.
 
-Detected disease:
+Context:
+A computer vision model analyzed a crop image and detected the following disease(s):
+
 {'; '.join(detections)}
 
-Instructions:
-- Explain the disease in simple farmer-friendly language
-- Mention possible causes
-- Suggest immediate preventive or corrective actions
-- If confidence is below 60%, say the diagnosis may be uncertain
+Rules (STRICT):
+- Talk ONLY about crop disease and farming
+- Do NOT mention animals, people, medicine, or unrelated topics
+- Use very simple language suitable for farmers
+- No stories, no examples outside agriculture
+- No assumptions beyond the detected disease
 
-Answer clearly in 5–6 short bullet points.
+What to explain:
+1. What the disease is (1 line)
+2. Why it happens (causes)
+3. Immediate actions the farmer should take
+4. Basic prevention tips
+
+If detection confidence is below 60%, clearly say the result may not be fully certain.
+
+Format:
+- 5 to 6 short bullet points
+- Practical and action-oriented
 """
 
         with st.spinner("Generating AI explanation..."):
-            llm_output = llm(prompt, max_new_tokens=200)
+            llm_output = llm(
+                prompt,
+                max_new_tokens=180,
+                temperature=0.2,     # 🔒 reduces nonsense
+                top_p=0.9
+            )
 
         st.write(llm_output[0]["generated_text"])
-    else:
-        st.info("No disease detected, so AI explanation was not generated.")
 
 
 
