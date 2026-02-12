@@ -35,7 +35,7 @@ expert knowledge. AgriVision-Bridge addresses this challenge by using:
 
 - **YOLO-based object detection** to identify crop diseases from images
 - **Local Large Language Models (LLMs)** to generate human-readable diagnostics
-- A **fully offline, deployable pipeline** suitable for real-world agri-advisory use
+- A **fully online, deployable pipeline** suitable for real-world agri-advisory use
 """
 )
 
@@ -109,3 +109,4 @@ Use the **sidebar navigation** to explore:
 # --------------------------------------------------
 st.markdown("---")
 st.caption("© 2026 | AgriVision-Bridge | Multi-Modal AI for Smart Agriculture 🌱")
+
