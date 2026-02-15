@@ -34,7 +34,7 @@ Traditional crop disease diagnosis is time-consuming and often requires
 expert knowledge. AgriVision-Bridge addresses this challenge by using:
 
 - **YOLO-based object detection** to identify crop diseases from images
-- **Local Large Language Models (LLMs)** to generate human-readable diagnostics
+- **Large Language Models (LLMs)** to generate human-readable diagnostics
 - A **fully online, deployable pipeline** suitable for real-world agri-advisory use
 """
 )
@@ -52,7 +52,7 @@ st.markdown(
 
 ### 🧠 Reasoning Layer
 - Converts YOLO outputs into structured prompts
-- Uses a **local transformer-based LLM (Gemma 2B)** for explainable reasoning
+- Uses a **transformer-based LLM (Gemma 2B)** for explainable reasoning
 - Handles low-confidence detections responsibly
 
 ### 🔗 Integration Layer
@@ -109,4 +109,5 @@ Use the **sidebar navigation** to explore:
 # --------------------------------------------------
 st.markdown("---")
 st.caption("© 2026 | AgriVision-Bridge | Multi-Modal AI for Smart Agriculture 🌱")
+
 
